@@ -11,191 +11,310 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-console.log("All-in-One Downloader Bot Online...");
+console.log("Custom Downloader Telegram Bot Started...");
 
+// In-Memory Storage for Session Data
+const userSessions = new Map();
+
+// Standard Headers
 const commonHeaders = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*'
 };
 
-// 1. TeraBox Handler
-async function handleTerabox(text) {
-    const res = await axios.post('https://teraplayer-xfwi.onrender.com/api/preview', 
-        { url: text, password: "" }, 
-        { headers: { ...commonHeaders, 'Content-Type': 'application/json' }, timeout: 25000 }
-    );
-    if (res.data && res.data.ok) {
-        const file = res.data.files?.[0] || res.data;
-        return {
-            type: 'video',
-            url: file.stream_url || file.download_url,
-            caption: `📹 *${file.name || res.data.title || "TeraBox File"}*\n📦 Size: ${file.size_str || res.data.size_str || "N/A"}`
-        };
-    }
-    return null;
+// 1. YouTube Fetcher
+async function fetchYouTube(url) {
+    const res = await axios.get(`https://yt-api-s2tl.vercel.app/api/yt-download?url=${encodeURIComponent(url)}`, { timeout: 25000 });
+    return res.data;
 }
 
-// 2. Instagram & Facebook Handler (ContentStudio Proxy)
-async function handleSocialVideo(text) {
-    const res = await axios.post('https://api-free-tools.contentstudio.io/api/v1/video/facebook', 
-        { url: text }, 
-        { 
-            headers: { 
-                ...commonHeaders, 
+// 2. Facebook Fetcher
+async function fetchFacebook(url) {
+    const res = await axios.get(`https://fb-api-cyan.vercel.app/api/fb-download?url=${encodeURIComponent(url)}`, { timeout: 25000 });
+    return res.data;
+}
+
+// 3. TeraBox Fetcher
+async function fetchTerabox(url) {
+    const res = await axios.get(`https://terabox-api-psi-navy.vercel.app/api/terabox-download?url=${encodeURIComponent(url)}`, { timeout: 25000 });
+    return res.data;
+}
+
+// 4. Spotify Fetcher
+async function fetchSpotify(url) {
+    const res = await axios.get(`https://spotify-api-five-beige.vercel.app/api/spotify-download?url=${encodeURIComponent(url)}`, { timeout: 25000 });
+    return res.data;
+}
+
+// 5. Instagram Fetcher (ContentStudio API)
+async function fetchInstagram(url) {
+    const res = await axios.post(
+        'https://api-free-tools.contentstudio.io/api/v1/video/facebook',
+        { url: url },
+        {
+            headers: {
+                ...commonHeaders,
                 'Content-Type': 'application/json',
                 'Origin': 'https://contentstudio.io',
                 'Referer': 'https://contentstudio.io/'
-            }, 
-            timeout: 25000 
+            },
+            timeout: 25000
         }
     );
-    if (res.data && res.data.url) {
-        return {
-            type: 'video',
-            url: res.data.url,
-            caption: `✅ *Media Downloaded Successfully*`
-        };
-    }
-    return null;
+    return res.data;
 }
 
-// 3. Pinterest Handler
-async function handlePinterest(text) {
-    const res = await axios.get(`https://pingrab.app/api/pinterest?url=${encodeURIComponent(text)}`, { headers: commonHeaders, timeout: 20000 });
-    if (res.data && res.data.url) {
-        return {
-            type: res.data.is_video ? 'video' : 'photo',
-            url: res.data.url,
-            caption: `📌 *Pinterest Media*`
-        };
-    }
-    return null;
-}
-
-// 4. Spotify Handler (Track / Album)
-async function handleSpotify(text) {
-    const res = await axios.post('https://musicfab.io/api/spotify/download', 
-        { url: text }, 
-        { headers: { ...commonHeaders, 'Content-Type': 'application/json' }, timeout: 25000 }
-    );
-    if (res.data && res.data.audio_url) {
-        return {
-            type: 'audio',
-            url: res.data.audio_url,
-            caption: `🎵 *${res.data.title || "Spotify Track"}* - ${res.data.artist || ""}`
-        };
-    }
-    return null;
-}
-
-// 5. YouTube Handler (Convert via Service API)
-async function handleYouTube(url, type) {
-    const res = await axios.get(`https://spotsaver.net/api/yt?url=${encodeURIComponent(url)}&type=${type}`, { headers: commonHeaders, timeout: 30000 });
-    if (res.data && res.data.download_url) {
-        return {
-            type: type === 'mp3' ? 'audio' : 'video',
-            url: res.data.download_url,
-            caption: `▶️ *${res.data.title || "YouTube Media"}*`
-        };
-    }
-    return null;
-}
-
-// Start Command
+// Start Command Message
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(
-        msg.chat.id,
-        `👋 *All-in-One Downloader Bot-ലേക്ക് സ്വാഗതം!*\n\nതാഴെ പറയുന്ന ഏത് ലിങ്കും അയക്കാം:\n\n• *YouTube* (MP3/MP4 Buttons)\n• *Instagram & Facebook* Videos/Reels\n• *Spotify* Tracks & Albums\n• *TeraBox* Files\n• *Pinterest* Media\n\n_ഏതെങ്കിലും ഒരു ലിങ്ക് അയക്കൂ!_`,
-        { parse_mode: "Markdown" }
-    );
+    const startText = `👋 *Welcome to All-in-One Custom Downloader Bot!*\n\n` +
+        `I support downloading media from the following platforms:\n\n` +
+        `🎬 *YouTube Downloader* (MP4 & M4A Audio support)\n` +
+        `📘 *Facebook Downloader* (HD & SD Quality support)\n` +
+        `📹 *TeraBox Downloader* (Direct Stream & Fast Download links)\n` +
+        `🎵 *Spotify Downloader* (Tracks & Albums support)\n` +
+        `📸 *Instagram Downloader* (Reels & Video support)\n\n` +
+        `_Send me any supported link to get started!_`;
+
+    bot.sendMessage(msg.chat.id, startText, { parse_mode: "Markdown" });
 });
 
-// Handling Link Processing
+// Handling Link Received
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
     if (!text || text.startsWith('/')) return;
 
-    // Detect YouTube
-    const isYouTube = /(youtube\.com|youtu\.be)/i.test(text);
-    if (isYouTube) {
-        return bot.sendMessage(chatId, "🎬 *YouTube Format തെരഞ്ഞെടുക്കൂ:*", {
-            parse_mode: "Markdown",
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "🎵 MP3 (Audio)", callback_data: `yt_mp3|${text}` },
-                        { text: "🎥 MP4 (Video)", callback_data: `yt_mp4|${text}` }
-                    ]
-                ]
-            }
-        });
-    }
-
-    // Other Platforms
-    const isTerabox = /(terabox|1024terabox|teraboxapp|freeterabox)\.com/i.test(text);
-    const isSocial = /(instagram\.com|instagr\.am|facebook\.com|fb\.watch)/i.test(text);
-    const isPinterest = /(pinterest\.com|pin\.it)/i.test(text);
+    // Detect Platforms
+    const isYT = /(youtube\.com|youtu\.be)/i.test(text);
+    const isFB = /(facebook\.com|fb\.watch)/i.test(text);
+    const isTera = /(terabox|1024terabox|teraboxapp|freeterabox)\.com/i.test(text);
     const isSpotify = /spotify\.com/i.test(text);
+    const isInsta = /(instagram\.com|instagr\.am)/i.test(text);
 
-    if (!isTerabox && !isSocial && !isPinterest && !isSpotify) {
-        return bot.sendMessage(chatId, "❌ പിന്തുണയ്ക്കാത്ത ലിങ്ക് ആണ്. സപ്പോർട്ട് ചെയ്യുന്ന മറ്റ് ലിങ്കുകൾ അയക്കൂ.");
+    if (!isYT && !isFB && !isTera && !isSpotify && !isInsta) {
+        return bot.sendMessage(chatId, "❌ Unsupported link. Please send a valid YouTube, Facebook, TeraBox, Spotify, or Instagram link.");
     }
 
-    const statusMsg = await bot.sendMessage(chatId, "🔄 *Media Extract ചെയ്യുന്നു...*", { parse_mode: "Markdown" });
+    const sessionId = `${chatId}_${Date.now()}`;
 
-    try {
-        let result = null;
-
-        if (isTerabox) result = await handleTerabox(text);
-        else if (isSocial) result = await handleSocialVideo(text);
-        else if (isPinterest) result = await handlePinterest(text);
-        else if (isSpotify) result = await handleSpotify(text);
-
-        if (result && result.url) {
-            await bot.editMessageText("📥 *മീഡിയ അയക്കുന്നു...*", { chat_id: chatId, message_id: statusMsg.message_id });
-
-            if (result.type === 'video') await bot.sendVideo(chatId, result.url, { caption: result.caption, parse_mode: "Markdown" });
-            else if (result.type === 'audio') await bot.sendAudio(chatId, result.url, { caption: result.caption, parse_mode: "Markdown" });
-            else if (result.type === 'photo') await bot.sendPhoto(chatId, result.url, { caption: result.caption, parse_mode: "Markdown" });
-
-            await bot.deleteMessage(chatId, statusMsg.message_id);
-        } else {
-            await bot.editMessageText("❌ ഡൗൺലോഡ് ലിങ്ക് ലഭിച്ചില്ല. ലിങ്ക് വാലിഡ് ആണോ എന്ന് പരിശോധിക്കുക.", { chat_id: chatId, message_id: statusMsg.message_id });
-        }
-    } catch (err) {
-        console.error(err.message);
-        await bot.editMessageText("⚠️ എറർ സംഭവിച്ചു. അല്പം കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കുക.", { chat_id: chatId, message_id: statusMsg.message_id });
-    }
-});
-
-// Handling YouTube Button Clicks
-bot.on('callback_query', async (query) => {
-    const chatId = query.message.chat.id;
-    const [action, url] = query.data.split('|');
-
-    if (action === 'yt_mp3' || action === 'yt_mp4') {
-        const type = action === 'yt_mp3' ? 'mp3' : 'mp4';
-        bot.answerCallbackQuery(query.id, { text: `Processing ${type.toUpperCase()}...` });
-
-        const statusMsg = await bot.sendMessage(chatId, `⏳ *YouTube ${type.toUpperCase()} ഡൗൺലോഡ് ചെയ്യുന്നു...*`, { parse_mode: "Markdown" });
-
+    // --- YOUTUBE ---
+    if (isYT) {
+        const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching YouTube details...*", { parse_mode: "Markdown" });
         try {
-            const result = await handleYouTube(url, type);
-            if (result && result.url) {
-                if (type === 'mp3') {
-                    await bot.sendAudio(chatId, result.url, { caption: result.caption, parse_mode: "Markdown" });
-                } else {
-                    await bot.sendVideo(chatId, result.url, { caption: result.caption, parse_mode: "Markdown" });
+            const data = await fetchYouTube(text);
+            if (data && (data.status || data.result)) {
+                userSessions.set(sessionId, data);
+                await bot.deleteMessage(chatId, statusMsg.message_id);
+                return bot.sendMessage(chatId, `🎬 *${data.title || data.result?.title || "YouTube Media"}*\n\nSelect a format:`, {
+                    parse_mode: "Markdown",
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🎥 MP4 (Video)", callback_data: `yt_mp4|${sessionId}` },
+                                { text: "🎵 M4A (Audio)", callback_data: `yt_m4a|${sessionId}` }
+                            ]
+                        ]
+                    }
+                });
+            } else {
+                return bot.editMessageText("❌ Unable to find YouTube details.", { chat_id: chatId, message_id: statusMsg.message_id });
+            }
+        } catch (e) {
+            return bot.editMessageText("⚠️ YouTube API Error occurred.", { chat_id: chatId, message_id: statusMsg.message_id });
+        }
+    }
+
+    // --- FACEBOOK ---
+    if (isFB) {
+        const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching Facebook details...*", { parse_mode: "Markdown" });
+        try {
+            const data = await fetchFacebook(text);
+            if (data && (data.status || data.result)) {
+                userSessions.set(sessionId, data);
+                await bot.deleteMessage(chatId, statusMsg.message_id);
+                
+                const buttons = [];
+                const res = data.result || data;
+                if (res.hd || res.hd_url) buttons.push({ text: "🎬 HD Video", callback_data: `fb_hd|${sessionId}` });
+                if (res.sd || res.sd_url) buttons.push({ text: "📱 SD Video", callback_data: `fb_sd|${sessionId}` });
+
+                if (buttons.length === 0 && (res.url || res.download_url)) {
+                    buttons.push({ text: "🎥 Download Video", callback_data: `fb_sd|${sessionId}` });
+                }
+
+                return bot.sendMessage(chatId, `📘 *Facebook Video*\n\nSelect video quality:`, {
+                    parse_mode: "Markdown",
+                    reply_markup: { inline_keyboard: [buttons] }
+                });
+            } else {
+                return bot.editMessageText("❌ Facebook video not available.", { chat_id: chatId, message_id: statusMsg.message_id });
+            }
+        } catch (e) {
+            return bot.editMessageText("⚠️ Facebook API Error occurred.", { chat_id: chatId, message_id: statusMsg.message_id });
+        }
+    }
+
+    // --- TERABOX ---
+    if (isTera) {
+        const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching TeraBox details...*", { parse_mode: "Markdown" });
+        try {
+            const data = await fetchTerabox(text);
+            if (data && (data.status || data.ok)) {
+                userSessions.set(sessionId, data);
+                await bot.deleteMessage(chatId, statusMsg.message_id);
+
+                const file = data.result?.[0] || data.files?.[0] || data;
+                const title = file.file_name || file.name || data.title || "TeraBox File";
+                const size = file.file_size || file.size_str || data.size_str || "N/A";
+
+                return bot.sendMessage(chatId, `📦 *${title}*\n📐 Size: *${size}*\n\nSelect an option:`, {
+                    parse_mode: "Markdown",
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "▶️ Stream Link", callback_data: `tera_stream|${sessionId}` },
+                                { text: "📥 Download Link", callback_data: `tera_download|${sessionId}` }
+                            ],
+                            [
+                                { text: "📤 Send File Directly", callback_data: `tera_send|${sessionId}` }
+                            ]
+                        ]
+                    }
+                });
+            } else {
+                return bot.editMessageText("❌ Could not fetch TeraBox file details.", { chat_id: chatId, message_id: statusMsg.message_id });
+            }
+        } catch (e) {
+            return bot.editMessageText("⚠️ TeraBox API Error occurred.", { chat_id: chatId, message_id: statusMsg.message_id });
+        }
+    }
+
+    // --- SPOTIFY ---
+    if (isSpotify) {
+        const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching Spotify details...*", { parse_mode: "Markdown" });
+        try {
+            const data = await fetchSpotify(text);
+            const tracks = data.result || data.tracks || (Array.isArray(data) ? data : [data]);
+
+            if (tracks && tracks.length > 0) {
+                await bot.editMessageText(`🎵 *Found ${tracks.length} track(s)! Sending...*`, { chat_id: chatId, message_id: statusMsg.message_id, parse_mode: "Markdown" });
+
+                for (const track of tracks) {
+                    const audioUrl = track.download_url || track.url || track.link;
+                    const caption = `🎵 *${track.title || track.name || "Spotify Track"}*\n👤 *${track.artist || track.artists || ""}*`;
+                    if (audioUrl) {
+                        await bot.sendAudio(chatId, audioUrl, { caption: caption, parse_mode: "Markdown" });
+                    }
                 }
                 await bot.deleteMessage(chatId, statusMsg.message_id);
             } else {
-                await bot.editMessageText("❌ YouTube ഡൗൺലോഡ് പരാജയപ്പെട്ടു.", { chat_id: chatId, message_id: statusMsg.message_id });
+                await bot.editMessageText("❌ Could not fetch Spotify audio.", { chat_id: chatId, message_id: statusMsg.message_id });
             }
-        } catch (err) {
-            console.error(err.message);
-            await bot.editMessageText("⚠️ പ്രോസസ്സ് ചെയ്യുന്നതിൽ എറർ സംഭവിച്ചു.", { chat_id: chatId, message_id: statusMsg.message_id });
+        } catch (e) {
+            return bot.editMessageText("⚠️ Spotify API Error occurred.", { chat_id: chatId, message_id: statusMsg.message_id });
+        }
+    }
+
+    // --- INSTAGRAM ---
+    if (isInsta) {
+        const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching Instagram media...*", { parse_mode: "Markdown" });
+        try {
+            const data = await fetchInstagram(text);
+            if (data && data.url) {
+                await bot.editMessageText("📥 *Sending video...*", { chat_id: chatId, message_id: statusMsg.message_id, parse_mode: "Markdown" });
+                await bot.sendVideo(chatId, data.url, { caption: "✅ *Instagram Video*", parse_mode: "Markdown" });
+                await bot.deleteMessage(chatId, statusMsg.message_id);
+            } else {
+                await bot.editMessageText("❌ Instagram video not found.", { chat_id: chatId, message_id: statusMsg.message_id });
+            }
+        } catch (e) {
+            return bot.editMessageText("⚠️ Instagram API Error occurred.", { chat_id: chatId, message_id: statusMsg.message_id });
+        }
+    }
+});
+
+// Inline Buttons Callback Listener
+bot.on('callback_query', async (query) => {
+    const chatId = query.message.chat.id;
+    const [type, sessionId] = query.data.split('|');
+    const data = userSessions.get(sessionId);
+
+    bot.answerCallbackQuery(query.id);
+
+    if (!data) {
+        return bot.sendMessage(chatId, "❌ Session expired. Please send the link again.");
+    }
+
+    const res = data.result || data.files?.[0] || data;
+
+    // YouTube Video / Audio
+    if (type === 'yt_mp4' || type === 'yt_m4a') {
+        const isVideo = type === 'yt_mp4';
+        const mediaUrl = isVideo ? (res.mp4 || res.video_url || res.download_url) : (res.m4a || res.mp3 || res.audio_url);
+        
+        if (!mediaUrl) return bot.sendMessage(chatId, "❌ Download link not available.");
+
+        const status = await bot.sendMessage(chatId, `⏳ *Sending YouTube ${isVideo ? 'Video' : 'Audio'}...*`, { parse_mode: "Markdown" });
+        try {
+            if (isVideo) {
+                await bot.sendVideo(chatId, mediaUrl, { caption: `🎬 *${data.title || "YouTube Video"}*`, parse_mode: "Markdown" });
+            } else {
+                await bot.sendAudio(chatId, mediaUrl, { caption: `🎵 *${data.title || "YouTube Audio"}*`, parse_mode: "Markdown" });
+            }
+            await bot.deleteMessage(chatId, status.message_id);
+        } catch (e) {
+            await bot.editMessageText(`⚠️ Could not send file directly (likely exceeds Telegram bot upload limits).\n\n🔗 [Click here to Download Directly](${mediaUrl})`, {
+                chat_id: chatId,
+                message_id: status.message_id,
+                parse_mode: "Markdown"
+            });
+        }
+    }
+
+    // Facebook HD / SD
+    if (type === 'fb_hd' || type === 'fb_sd') {
+        const isHd = type === 'fb_hd';
+        const mediaUrl = isHd ? (res.hd || res.hd_url) : (res.sd || res.sd_url || res.url);
+
+        if (!mediaUrl) return bot.sendMessage(chatId, "❌ Video link not available.");
+
+        const status = await bot.sendMessage(chatId, `⏳ *Sending Facebook ${isHd ? 'HD' : 'SD'} Video...*`, { parse_mode: "Markdown" });
+        try {
+            await bot.sendVideo(chatId, mediaUrl, { caption: `📘 *Facebook Video (${isHd ? 'HD' : 'SD'})*`, parse_mode: "Markdown" });
+            await bot.deleteMessage(chatId, status.message_id);
+        } catch (e) {
+            await bot.editMessageText(`⚠️ Could not send video file directly.\n\n🔗 [Click here to Download Directly](${mediaUrl})`, {
+                chat_id: chatId,
+                message_id: status.message_id,
+                parse_mode: "Markdown"
+            });
+        }
+    }
+
+    // TeraBox Handling
+    if (type === 'tera_stream') {
+        const streamUrl = res.stream_url || res.stream || data.stream_url;
+        bot.sendMessage(chatId, `▶️ *TeraBox Stream Link:*\n\n${streamUrl}`, { parse_mode: "Markdown" });
+    }
+
+    if (type === 'tera_download') {
+        const downloadUrl = res.download_url || res.download || data.download_url || res.stream_url;
+        bot.sendMessage(chatId, `📥 *TeraBox Fast Download Link:*\n\n${downloadUrl}`, { parse_mode: "Markdown" });
+    }
+
+    if (type === 'tera_send') {
+        const fileUrl = res.download_url || res.stream_url || data.stream_url;
+        const status = await bot.sendMessage(chatId, "⏳ *Sending TeraBox file... (Large files may take longer)*", { parse_mode: "Markdown" });
+        try {
+            await bot.sendVideo(chatId, fileUrl, { caption: `📦 *${res.file_name || res.name || "TeraBox File"}*`, parse_mode: "Markdown" });
+            await bot.deleteMessage(chatId, status.message_id);
+        } catch (e) {
+            await bot.editMessageText(`⚠️ Could not send file directly via Telegram (due to Telegram upload limit or timeout).\n\n🔗 [Click here to Download Directly](${fileUrl})`, {
+                chat_id: chatId,
+                message_id: status.message_id,
+                parse_mode: "Markdown"
+            });
         }
     }
 });
