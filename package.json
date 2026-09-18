@@ -1,7 +1,7 @@
 {
-  "name": "all-in-one-downloader-bot",
+  "name": "custom-all-downloader-bot",
   "version": "1.0.0",
-  "description": "Multi Downloader Telegram Bot for Koyeb",
+  "description": "Custom Multi-Downloader Telegram Bot for Koyeb",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
