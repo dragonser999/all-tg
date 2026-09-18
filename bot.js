@@ -64,6 +64,15 @@ async function fetchInstagram(url) {
     return res.data;
 }
 
+// Helper: Find URL dynamically from any API response object
+function extractUrl(obj, keys = []) {
+    if (!obj) return null;
+    for (const key of keys) {
+        if (obj[key]) return obj[key];
+    }
+    return obj.url || obj.download_url || obj.download || obj.stream_url || obj.stream || obj.link || null;
+}
+
 // Start Command Message
 bot.onText(/\/start/, (msg) => {
     const startText = `👋 *Welcome to All-in-One Custom Downloader Bot!*\n\n` +
@@ -103,7 +112,7 @@ bot.on('message', async (msg) => {
         const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching YouTube details...*", { parse_mode: "Markdown" });
         try {
             const data = await fetchYouTube(text);
-            if (data && (data.status || data.result)) {
+            if (data) {
                 userSessions.set(sessionId, data);
                 await bot.deleteMessage(chatId, statusMsg.message_id);
                 return bot.sendMessage(chatId, `🎬 *${data.title || data.result?.title || "YouTube Media"}*\n\nSelect a format:`, {
@@ -130,7 +139,7 @@ bot.on('message', async (msg) => {
         const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching Facebook details...*", { parse_mode: "Markdown" });
         try {
             const data = await fetchFacebook(text);
-            if (data && (data.status || data.result)) {
+            if (data) {
                 userSessions.set(sessionId, data);
                 await bot.deleteMessage(chatId, statusMsg.message_id);
                 
@@ -139,7 +148,7 @@ bot.on('message', async (msg) => {
                 if (res.hd || res.hd_url) buttons.push({ text: "🎬 HD Video", callback_data: `fb_hd|${sessionId}` });
                 if (res.sd || res.sd_url) buttons.push({ text: "📱 SD Video", callback_data: `fb_sd|${sessionId}` });
 
-                if (buttons.length === 0 && (res.url || res.download_url)) {
+                if (buttons.length === 0) {
                     buttons.push({ text: "🎥 Download Video", callback_data: `fb_sd|${sessionId}` });
                 }
 
@@ -160,11 +169,11 @@ bot.on('message', async (msg) => {
         const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching TeraBox details...*", { parse_mode: "Markdown" });
         try {
             const data = await fetchTerabox(text);
-            if (data && (data.status || data.ok)) {
+            if (data) {
                 userSessions.set(sessionId, data);
                 await bot.deleteMessage(chatId, statusMsg.message_id);
 
-                const file = data.result?.[0] || data.files?.[0] || data;
+                const file = Array.isArray(data.result) ? data.result[0] : (data.result || data.files?.[0] || data);
                 const title = file.file_name || file.name || data.title || "TeraBox File";
                 const size = file.file_size || file.size_str || data.size_str || "N/A";
 
@@ -201,7 +210,7 @@ bot.on('message', async (msg) => {
                 await bot.editMessageText(`🎵 *Found ${tracks.length} track(s)! Sending...*`, { chat_id: chatId, message_id: statusMsg.message_id, parse_mode: "Markdown" });
 
                 for (const track of tracks) {
-                    const audioUrl = track.download_url || track.url || track.link;
+                    const audioUrl = extractUrl(track);
                     const caption = `🎵 *${track.title || track.name || "Spotify Track"}*\n👤 *${track.artist || track.artists || ""}*`;
                     if (audioUrl) {
                         await bot.sendAudio(chatId, audioUrl, { caption: caption, parse_mode: "Markdown" });
@@ -221,9 +230,10 @@ bot.on('message', async (msg) => {
         const statusMsg = await bot.sendMessage(chatId, "🔄 *Fetching Instagram media...*", { parse_mode: "Markdown" });
         try {
             const data = await fetchInstagram(text);
-            if (data && data.url) {
+            const videoUrl = extractUrl(data);
+            if (videoUrl) {
                 await bot.editMessageText("📥 *Sending video...*", { chat_id: chatId, message_id: statusMsg.message_id, parse_mode: "Markdown" });
-                await bot.sendVideo(chatId, data.url, { caption: "✅ *Instagram Video*", parse_mode: "Markdown" });
+                await bot.sendVideo(chatId, videoUrl, { caption: "✅ *Instagram Video*", parse_mode: "Markdown" });
                 await bot.deleteMessage(chatId, statusMsg.message_id);
             } else {
                 await bot.editMessageText("❌ Instagram video not found.", { chat_id: chatId, message_id: statusMsg.message_id });
@@ -246,21 +256,23 @@ bot.on('callback_query', async (query) => {
         return bot.sendMessage(chatId, "❌ Session expired. Please send the link again.");
     }
 
-    const res = data.result || data.files?.[0] || data;
+    const res = Array.isArray(data.result) ? data.result[0] : (data.result || data.files?.[0] || data);
 
     // YouTube Video / Audio
     if (type === 'yt_mp4' || type === 'yt_m4a') {
         const isVideo = type === 'yt_mp4';
-        const mediaUrl = isVideo ? (res.mp4 || res.video_url || res.download_url) : (res.m4a || res.mp3 || res.audio_url);
-        
+        const mediaUrl = isVideo 
+            ? extractUrl(res, ['mp4', 'video', 'video_url']) 
+            : extractUrl(res, ['m4a', 'mp3', 'audio', 'audio_url']);
+
         if (!mediaUrl) return bot.sendMessage(chatId, "❌ Download link not available.");
 
         const status = await bot.sendMessage(chatId, `⏳ *Sending YouTube ${isVideo ? 'Video' : 'Audio'}...*`, { parse_mode: "Markdown" });
         try {
             if (isVideo) {
-                await bot.sendVideo(chatId, mediaUrl, { caption: `🎬 *${data.title || "YouTube Video"}*`, parse_mode: "Markdown" });
+                await bot.sendVideo(chatId, mediaUrl, { caption: `🎬 *${data.title || res.title || "YouTube Video"}*`, parse_mode: "Markdown" });
             } else {
-                await bot.sendAudio(chatId, mediaUrl, { caption: `🎵 *${data.title || "YouTube Audio"}*`, parse_mode: "Markdown" });
+                await bot.sendAudio(chatId, mediaUrl, { caption: `🎵 *${data.title || res.title || "YouTube Audio"}*`, parse_mode: "Markdown" });
             }
             await bot.deleteMessage(chatId, status.message_id);
         } catch (e) {
@@ -275,7 +287,9 @@ bot.on('callback_query', async (query) => {
     // Facebook HD / SD
     if (type === 'fb_hd' || type === 'fb_sd') {
         const isHd = type === 'fb_hd';
-        const mediaUrl = isHd ? (res.hd || res.hd_url) : (res.sd || res.sd_url || res.url);
+        const mediaUrl = isHd 
+            ? extractUrl(res, ['hd', 'hd_url']) 
+            : extractUrl(res, ['sd', 'sd_url']);
 
         if (!mediaUrl) return bot.sendMessage(chatId, "❌ Video link not available.");
 
@@ -294,17 +308,21 @@ bot.on('callback_query', async (query) => {
 
     // TeraBox Handling
     if (type === 'tera_stream') {
-        const streamUrl = res.stream_url || res.stream || data.stream_url;
+        const streamUrl = extractUrl(res, ['stream_url', 'stream', 'fast_dl', 'url', 'download_url']);
+        if (!streamUrl) return bot.sendMessage(chatId, "❌ Stream link not available.");
         bot.sendMessage(chatId, `▶️ *TeraBox Stream Link:*\n\n${streamUrl}`, { parse_mode: "Markdown" });
     }
 
     if (type === 'tera_download') {
-        const downloadUrl = res.download_url || res.download || data.download_url || res.stream_url;
+        const downloadUrl = extractUrl(res, ['download_url', 'download', 'url', 'fast_dl', 'stream_url']);
+        if (!downloadUrl) return bot.sendMessage(chatId, "❌ Download link not available.");
         bot.sendMessage(chatId, `📥 *TeraBox Fast Download Link:*\n\n${downloadUrl}`, { parse_mode: "Markdown" });
     }
 
     if (type === 'tera_send') {
-        const fileUrl = res.download_url || res.stream_url || data.stream_url;
+        const fileUrl = extractUrl(res, ['download_url', 'download', 'stream_url', 'stream', 'url']);
+        if (!fileUrl) return bot.sendMessage(chatId, "❌ Direct download URL not available.");
+
         const status = await bot.sendMessage(chatId, "⏳ *Sending TeraBox file... (Large files may take longer)*", { parse_mode: "Markdown" });
         try {
             await bot.sendVideo(chatId, fileUrl, { caption: `📦 *${res.file_name || res.name || "TeraBox File"}*`, parse_mode: "Markdown" });
