@@ -172,7 +172,8 @@ async def callback_handler(client: Client, callback_query: CallbackQuery):
 
     except Exception as e:
         logger.exception("Callback handling failed")
-        await callback_query.answer(f"Error: {e}", show_alert=True)
+        short_error = str(e)[:150]
+        await callback_query.answer(f"Error: {short_error}", show_alert=True)
 
 
 async def handle_youtube_callback(client: Client, callback_query: CallbackQuery, fmt: str, session_id: int):
@@ -198,7 +199,7 @@ async def handle_youtube_callback(client: Client, callback_query: CallbackQuery,
         return
 
     await callback_query.message.edit_text(f"⬇️ Downloading {fmt.upper()}...")
-    path = await download_direct_file(url, filename)
+    path = await download_direct_file(url, filename, headers={"Referer": "https://www.youtube.com/"})
 
     try:
         if fmt == "mp4":
@@ -228,7 +229,7 @@ async def handle_facebook_callback(client: Client, callback_query: CallbackQuery
 
     filename = f"facebook_video_{quality}.mp4"
     await callback_query.message.edit_text(f"⬇️ Downloading {quality.upper()}...")
-    path = await download_direct_file(url, filename)
+    path = await download_direct_file(url, filename, headers={"Referer": "https://www.facebook.com/"})
 
     try:
         await client.send_video(chat_id, path, caption=f"📘 Facebook video ({quality.upper()})")
